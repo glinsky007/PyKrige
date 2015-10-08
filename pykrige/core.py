@@ -136,12 +136,12 @@ def initialize_variogram_model(x, y, z, variogram_model, variogram_model_paramet
     # (specifically, say, ending up as 0.99999999999999 instead of 1.0).
     # Appending dmax + 0.001 ensures that the largest distance value
     # is included in the semivariogram calculation.
-    dmax = np.amax(d)
-    dmin = np.amin(d)
-    dd = (dmax - dmin)/nlags
-    bins = [dmin + n*dd for n in range(nlags)]
-    dmax += 0.001
-    bins.append(dmax)
+    #dmax = np.amax(d)
+    #dmin = np.amin(d)
+    #dd = (dmax - dmin)/nlags
+    #bins = [dmin + n*dd for n in range(nlags)]
+    #dmax += 0.001
+    #bins.append(dmax)
 
     # This old binning method was experimental and doesn't seem
     # to work too well. Bins were computed such that there are more
@@ -153,12 +153,12 @@ def initialize_variogram_model(x, y, z, variogram_model, variogram_model_paramet
     # automatic variogram calculation and confuses comparison of the
     # semivariogram with the variogram model.
     #
-    # dmax = np.amax(d)
-    # dmin = np.amin(d)
-    # dd = dmax - dmin
-    # bins = [dd*(0.5**n) + dmin for n in range(nlags, 1, -1)]
-    # bins.insert(0, dmin)
-    # bins.append(dmax)
+    dmax = np.amax(d)
+    dmin = np.amin(d)
+    dd = dmax - dmin
+    bins = [dd*(0.5**n) + dmin for n in range(nlags, 1, -1)]
+    bins.insert(0, dmin)
+    bins.append(dmax)
 
     lags = np.zeros(nlags)
     semivariance = np.zeros(nlags)

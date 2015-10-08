@@ -1,5 +1,5 @@
-__doc__ = """Code by Benjamin S. Murphy
-bscott.murphy@gmail.com
+__doc__ = """Code by Michael Glinsky
+glinsky@qitech.biz
 
 Dependencies:
     numpy
@@ -8,7 +8,7 @@ Dependencies:
     Cython
 
 Classes:
-    OrdinaryKriging: Convenience class for easy access to 2D Ordinary Kriging.
+    SimpleKriging: Convenience class for easy access to 2D Simple Kriging.
 
 References:
     P.K. Kitanidis, Introduction to Geostatistcs: Applications in Hydrogeology,
@@ -25,9 +25,9 @@ import variogram_models
 import core
 
 
-class OrdinaryKriging:
-    """class OrdinaryKriging
-    Convenience class for easy access to 2D Ordinary Kriging
+class SimpleKriging:
+    """class SimpleKriging
+    Convenience class for easy access to 2D simple Kriging
 
     Dependencies:
         numpy
@@ -370,12 +370,9 @@ class OrdinaryKriging:
 
         xy = np.concatenate((self.X_ADJUSTED[:, np.newaxis], self.Y_ADJUSTED[:, np.newaxis]), axis=1)
         d = cdist(xy, xy, 'euclidean')
-        a = np.zeros((n+1, n+1))
-        a[:n, :n] = - self.variogram_function(self.variogram_model_parameters, d)
-        np.fill_diagonal(a, 0.)
-        a[n, :] = 1.0
-        a[:, n] = 1.0
-        a[n, n] = 0.0
+        a = np.zeros((n, n))
+        a[:,:] = self.variogram_model_parameters[0] - self.variogram_function(self.variogram_model_parameters, d)
+        print a
 
         return a
 
@@ -385,28 +382,33 @@ class OrdinaryKriging:
 
         npt = bd.shape[0]
         n = self.X_ADJUSTED.shape[0]
-        zero_index = None
-        zero_value = False
+        #zero_index = None
+        #zero_value = False
 
         a_inv = scipy.linalg.inv(a)
 
-        if np.any(np.absolute(bd) <= self.eps):
-            zero_value = True
-            zero_index = np.where(np.absolute(bd) <= self.eps)
+        #if np.any(np.absolute(bd) <= self.eps):
+        #    zero_value = True
+        #    zero_index = np.where(np.absolute(bd) <= self.eps)
 
-        b = np.zeros((npt, n+1, 1))
-        b[:, :n, 0] = - self.variogram_function(self.variogram_model_parameters, bd)
-        if zero_value:
-            b[zero_index[0], zero_index[1], 0] = 0.0
-        b[:, n, 0] = 1.0
+        b = np.zeros((npt, n, 1))
+        b[:, :, 0] = self.variogram_model_parameters[0] - self.variogram_function(self.variogram_model_parameters, bd)
+        #if zero_value:
+        #    b[zero_index[0], zero_index[1], 0] = 0.0
 
         if (~mask).any():
-            mask_b = np.repeat(mask[:, np.newaxis, np.newaxis], n+1, axis=1)
+            mask_b = np.repeat(mask[:, np.newaxis, np.newaxis], n, axis=1)
             b = np.ma.array(b, mask=mask_b)
 
-        x = np.dot(a_inv, b.reshape((npt, n+1)).T).reshape((1, n+1, npt)).T
-        zvalues = np.sum(x[:, :n, 0] * self.Z, axis=1)
-        sigmasq = np.sum(x[:, :, 0] * -b[:, :, 0], axis=1)
+        x = np.dot(a_inv, b.reshape((npt, n)).T).reshape((1, n, npt)).T
+        zvalues = np.sum(x[:, :, 0] * self.Z, axis=1)
+        sigmasq = self.variogram_model_parameters[0] - np.sum(x[:, :, 0] * b[:, :, 0], axis=1)
+        
+        print b, x, self.Z
+        
+        #weights = a_inv.dot(b)
+        #zvalues = self.Z.dot(weights)
+        #sigmasq = self.variogram_model_parameters[0] - np.sum( b * weights )
 
         return zvalues, sigmasq
 
@@ -423,21 +425,20 @@ class OrdinaryKriging:
 
         for j in np.nonzero(~mask)[0]:   # Note that this is the same thing as range(npt) if mask is not defined,
             bd = bd_all[j]               # otherwise it takes the non-masked elements.
-            if np.any(np.absolute(bd) <= self.eps):
-                zero_value = True
-                zero_index = np.where(np.absolute(bd) <= self.eps)
-            else:
-                zero_index = None
-                zero_value = False
+            #if np.any(np.absolute(bd) <= self.eps):
+            #    zero_value = True
+            #    zero_index = np.where(np.absolute(bd) <= self.eps)
+            #else:
+            #    zero_index = None
+            #    zero_value = False
 
-            b = np.zeros((n+1, 1))
-            b[:n, 0] = - self.variogram_function(self.variogram_model_parameters, bd)
-            if zero_value:
-                b[zero_index[0], 0] = 0.0
-            b[n, 0] = 1.0
+            b = np.zeros((n, 1))
+            b[:, 0] = self.variogram_model_parameters[0] -  self.variogram_function(self.variogram_model_parameters, bd)
+            #if zero_value:
+            #    b[zero_index[0], 0] = 0.0
             x = np.dot(a_inv, b)
-            zvalues[j] = np.sum(x[:n, 0] * self.Z)
-            sigmasq[j] = np.sum(x[:, 0] * -b[:, 0])
+            zvalues[j] = np.sum(x[:, 0] * self.Z)
+            sigmasq[j] = self.variogram_model_parameters[0] - np.sum(x[:, 0] * b[:, 0])
 
         return zvalues, sigmasq
 
@@ -458,22 +459,21 @@ class OrdinaryKriging:
             a_selector = np.concatenate((b_selector, np.array([a_all.shape[0] - 1])))
             a = a_all[a_selector[:, None], a_selector]
 
-            if np.any(np.absolute(bd) <= self.eps):
-                zero_value = True
-                zero_index = np.where(np.absolute(bd) <= self.eps)
-            else:
-                zero_index = None
-                zero_value = False
-            b = np.zeros((n+1, 1))
-            b[:n, 0] = - self.variogram_function(self.variogram_model_parameters, bd)
-            if zero_value:
-                b[zero_index[0], 0] = 0.0
-            b[n, 0] = 1.0
+            #if np.any(np.absolute(bd) <= self.eps):
+            #    zero_value = True
+            #    zero_index = np.where(np.absolute(bd) <= self.eps)
+            #else:
+            #    zero_index = None
+            #    zero_value = False
+            b = np.zeros((n, 1))
+            b[:, 0] = self.variogram_model_parameters[0] -  self.variogram_function(self.variogram_model_parameters, bd)
+            #if zero_value:
+            #    b[zero_index[0], 0] = 0.0
 
             x = scipy.linalg.solve(a, b)
 
-            zvalues[i] = x[:n, 0].dot(self.Z[b_selector])
-            sigmasq[i] = - x[:, 0].dot(b[:, 0])
+            zvalues[i] = x[:, 0].dot(self.Z[b_selector])
+            sigmasq[i] = self.variogram_model_parameters[0] -  x[:, 0].dot(b[:, 0])
 
         return zvalues, sigmasq
 
@@ -541,7 +541,7 @@ class OrdinaryKriging:
         """
 
         if self.verbose:
-            print "Executing Ordinary Kriging...\n"
+            print "Executing Simple Kriging...\n"
 
         if style != 'grid' and style != 'masked' and style != 'points':
             raise ValueError("style argument must be 'grid', 'points', or 'masked'")
