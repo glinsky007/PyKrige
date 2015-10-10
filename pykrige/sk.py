@@ -103,9 +103,10 @@ class SimpleKriging:
                     more information.
                 nlags (int, optional): Number of averaging bins for the semivariogram.
                     Defualt is 6.
-                weight (boolean, optional): Flag that specifies if semivariance at smaller lags
-                    should be weighted more heavily when automatically calculating variogram model.
-                    True indicates that weights will be applied. Default is False.
+                weight (integer, optional): If weight=1, semivariance at smaller lags
+                    is weighted more heavily when automatically calculating variogram model.
+                    If weight=0, no weights will be applied. If weights=2, then fit is weighted
+                    by the error in the estimate of the semivariogram.  Default is 0.
                 anisotropy_scaling (float, optional): Scalar stretching value to
                     take into account anisotropy. Default is 1 (effectively no
                     stretching). Scaling is applied in the y-direction.
@@ -182,7 +183,7 @@ class SimpleKriging:
                       'exponential': variogram_models.exponential_variogram_model}
 
     def __init__(self, x, y, z, variogram_model='linear', variogram_parameters=None,
-                 variogram_function=None, nlags=6, weight=False, anisotropy_scaling=1.0,
+                 variogram_function=None, nlags=6, weight=0, anisotropy_scaling=1.0,
                  anisotropy_angle=0.0, verbose=False, enable_plotting=False,
                  enable_statistics=False):
 
@@ -221,7 +222,7 @@ class SimpleKriging:
             self.variogram_function = self.variogram_dict[self.variogram_model]
         if self.verbose:
             print "Initializing variogram model..."
-        self.lags, self.semivariance, self.variogram_model_parameters = \
+        self.lags, self.semivariance, self.semivariance_error, self.variogram_model_parameters = \
             core.initialize_variogram_model(self.X_ADJUSTED, self.Y_ADJUSTED, self.Z,
                                             self.variogram_model, variogram_parameters,
                                             self.variogram_function, nlags, weight)
@@ -245,9 +246,9 @@ class SimpleKriging:
         if self.enable_plotting:
             self.display_variogram_model()
 
-        if self.verbose:
-            print "Calculating statistics on variogram model fit..."
         if enable_statistics:
+            if self.verbose:
+                print "Calculating statistics on variogram model fit..."
             self.delta, self.sigma, self.epsilon = core.find_statistics(self.X_ADJUSTED, self.Y_ADJUSTED,
                                                                         self.Z, self.variogram_function,
                                                                         self.variogram_model_parameters)
@@ -291,7 +292,7 @@ class SimpleKriging:
             self.variogram_function = self.variogram_dict[self.variogram_model]
         if self.verbose:
             print "Updating variogram mode..."
-        self.lags, self.semivariance, self.variogram_model_parameters = \
+        self.lags, self.semivariance, self.semivariance_error, self.variogram_model_parameters = \
             core.initialize_variogram_model(self.X_ADJUSTED, self.Y_ADJUSTED, self.Z,
                                             self.variogram_model, variogram_parameters,
                                             self.variogram_function, nlags, weight)
@@ -332,9 +333,17 @@ class SimpleKriging:
         """Displays variogram model with the actual binned data"""
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(self.lags, self.semivariance, 'r*')
+        ax.errorbar(self.lags, self.semivariance, fmt='ro', yerr=self.semivariance_error, label='calculated')
         ax.plot(self.lags,
-                self.variogram_function(self.variogram_model_parameters, self.lags), 'k-')
+                self.variogram_function(self.variogram_model_parameters, self.lags), 'k-', label='fit')
+        plt.title('Variogram(' + self.variogram_model + '): sill = ' + ('%.2f' % self.variogram_model_parameters[0]) + 
+                        ', nugget = ' + ('%.2f' % self.variogram_model_parameters[2]) + '\nazimuth = ' + 
+                        ('%.1f' % self.anisotropy_angle) + ', range-X = ' + 
+                        ('%.1f' % self.variogram_model_parameters[1]) + ', range-Y = ' +
+                        ('%.1f' % (self.variogram_model_parameters[1] / self.anisotropy_scaling)))
+        plt.xlabel('lag (distance)')
+        plt.ylabel('variance (distance^2)')
+        plt.legend(loc='best')
         plt.show()
 
     def switch_verbose(self):

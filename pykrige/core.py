@@ -162,18 +162,23 @@ def initialize_variogram_model(x, y, z, variogram_model, variogram_model_paramet
 
     lags = np.zeros(nlags)
     semivariance = np.zeros(nlags)
+    semivariance_error = np.zeros(nlags)
+    n_points = np.zeros(nlags)
 
     for n in range(nlags):
         # This 'if... else...' statement ensures that there are data
         # in the bin so that numpy can actually find the mean. If we
         # don't test this first, then Python kicks out an annoying warning
         # message when there is an empty bin and we try to calculate the mean.
-        if d[(d >= bins[n]) & (d < bins[n + 1])].size > 0:
+        n_points[n] = d[(d >= bins[n]) & (d < bins[n + 1])].size
+        if n_points[n] > 0:
             lags[n] = np.mean(d[(d >= bins[n]) & (d < bins[n + 1])])
             semivariance[n] = np.mean(g[(d >= bins[n]) & (d < bins[n + 1])])
+            semivariance_error[n] = semivariance[n] / np.sqrt(n_points[n])
         else:
             lags[n] = np.nan
             semivariance[n] = np.nan
+            semivariance_error[n] = np.nan
 
     lags = lags[~np.isnan(semivariance)]
     semivariance = semivariance[~np.isnan(semivariance)]
@@ -191,9 +196,9 @@ def initialize_variogram_model(x, y, z, variogram_model, variogram_model_paramet
             raise ValueError("Variogram parameters must be specified when implementing custom variogram model.")
         else:
             variogram_model_parameters = calculate_variogram_model(lags, semivariance, variogram_model,
-                                                                   variogram_function, weight)
+                                                                   variogram_function, weight, semivariance_error)
 
-    return lags, semivariance, variogram_model_parameters
+    return lags, semivariance, semivariance_error, variogram_model_parameters
 
 
 def initialize_variogram_model_3d(x, y, z, values, variogram_model, variogram_model_parameters,
@@ -225,17 +230,23 @@ def initialize_variogram_model_3d(x, y, z, values, variogram_model, variogram_mo
 
     lags = np.zeros(nlags)
     semivariance = np.zeros(nlags)
+    semivariance_error = np.zeros(nlags)
+    n_points = np.zeros(nlags)
 
     for n in range(nlags):
-        # This 'if... else...' statement ensures that there are data in the bin so that numpy can actually
-        # find the mean. If we don't test this first, then Python kicks out an annoying warning message
-        # when there is an empty bin and we try to calculate the mean.
-        if d[(d >= bins[n]) & (d < bins[n + 1])].size > 0:
+        # This 'if... else...' statement ensures that there are data
+        # in the bin so that numpy can actually find the mean. If we
+        # don't test this first, then Python kicks out an annoying warning
+        # message when there is an empty bin and we try to calculate the mean.
+        n_points[n] = d[(d >= bins[n]) & (d < bins[n + 1])].size
+        if n_points[n] > 0:
             lags[n] = np.mean(d[(d >= bins[n]) & (d < bins[n + 1])])
             semivariance[n] = np.mean(g[(d >= bins[n]) & (d < bins[n + 1])])
+            semivariance_error[n] = semivariance[n] / np.sqrt(n_points[n])
         else:
             lags[n] = np.nan
             semivariance[n] = np.nan
+            semivariance_error[n] = np.nan
 
     lags = lags[~np.isnan(semivariance)]
     semivariance = semivariance[~np.isnan(semivariance)]
@@ -253,19 +264,24 @@ def initialize_variogram_model_3d(x, y, z, values, variogram_model, variogram_mo
             raise ValueError("Variogram parameters must be specified when implementing custom variogram model.")
         else:
             variogram_model_parameters = calculate_variogram_model(lags, semivariance, variogram_model,
-                                                                   variogram_function, weight)
+                                                                   variogram_function, weight, semivariance_error)
 
     return lags, semivariance, variogram_model_parameters
 
 
-def variogram_function_error(params, x, y, variogram_function, weight):
+def variogram_function_error(params, x, y, variogram_function, weight, semivariance_error):
     """Function used to in fitting of variogram model.
     Returns RMSE between calculated fit and actual data."""
 
     diff = variogram_function(params, x) - y
 
-    if weight:
-        weights = np.arange(x.size, 0.0, -1.0)
+    if weight == 1:
+        #weights = np.arange(x.size, 0.0, -1.0)
+        weights = 1.0 / x
+        weights /= np.sum(weights)
+        rmse = np.sqrt(np.average(diff**2, weights=weights))
+    elif weight == 2:
+        weights = 1.0 / (semivariance_error**2)
         weights /= np.sum(weights)
         rmse = np.sqrt(np.average(diff**2, weights=weights))
     else:
@@ -274,7 +290,7 @@ def variogram_function_error(params, x, y, variogram_function, weight):
     return rmse
 
 
-def calculate_variogram_model(lags, semivariance, variogram_model, variogram_function, weight):
+def calculate_variogram_model(lags, semivariance, variogram_model, variogram_function, weight, semivariance_error):
     """Function that fits a variogram model when parameters are not specified."""
 
     if variogram_model == 'linear':
@@ -289,7 +305,7 @@ def calculate_variogram_model(lags, semivariance, variogram_model, variogram_fun
         x0 = [np.amax(semivariance), 0.5*np.amax(lags), np.amin(semivariance)]
         bnds = ((0.0, 10*np.amax(semivariance)), (0.0, np.amax(lags)), (0.0, np.amax(semivariance)))
 
-    res = minimize(variogram_function_error, x0, args=(lags, semivariance, variogram_function, weight),
+    res = minimize(variogram_function_error, x0, args=(lags, semivariance, variogram_function, weight, semivariance_error),
                    method='SLSQP', bounds=bnds)
 
     return res.x
