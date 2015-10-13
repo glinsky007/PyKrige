@@ -112,7 +112,7 @@ def adjust_for_anisotropy_3d(x, y, z, xcenter, ycenter, zcenter, scaling_y,
 
 
 def initialize_variogram_model(x, y, z, variogram_model, variogram_model_parameters,
-                               variogram_function, nlags, weight):
+                               variogram_function, nlags, weight, min_theta=None, max_theta=None):
     """Initializes the variogram model for kriging according
     to user specifications or to defaults"""
 
@@ -129,6 +129,20 @@ def initialize_variogram_model(x, y, z, variogram_model, variogram_model_paramet
     indices = np.indices(d.shape)
     d = d[(indices[0, :, :] > indices[1, :, :])]
     g = g[(indices[0, :, :] > indices[1, :, :])]
+
+    if min_theta != None and max_theta != None and max_theta > min_theta:
+        dx = dx[(indices[0, :, :] > indices[1, :, :])]
+        dy = dy[(indices[0, :, :] > indices[1, :, :])]
+        
+        az = np.arctan2(dy,dx)
+        az2 = az + np.pi
+        az2 = np.choose(az2 > np.pi, (az2, az2 - 2* np.pi))
+        az = 180.0 * az / np.pi
+        az2 = 180.0 * az2 / np.pi
+        mask = np.logical_or(np.logical_and(az > min_theta, az < max_theta), np.logical_and(az2 > min_theta, az2 < max_theta))
+        d = d[mask]
+        g = g[mask]
+        
 
     # Equal-sized bins are now implemented. The upper limit on the bins
     # is appended to the list (instead of calculated as part of the
@@ -153,6 +167,8 @@ def initialize_variogram_model(x, y, z, variogram_model, variogram_model_paramet
     # automatic variogram calculation and confuses comparison of the
     # semivariogram with the variogram model.
     #
+    # MEG - changed back to this method.  Find that the greater resolution
+    # at smaller lags is definitely needed.  Might consider a logorithmic binning of lags
     dmax = np.amax(d)
     dmin = np.amin(d)
     dd = dmax - dmin
@@ -198,6 +214,7 @@ def initialize_variogram_model(x, y, z, variogram_model, variogram_model_paramet
             variogram_model_parameters = calculate_variogram_model(lags, semivariance, variogram_model,
                                                                    variogram_function, weight, semivariance_error)
 
+    # MEG added caculation of semivarianc_error
     return lags, semivariance, semivariance_error, variogram_model_parameters
 
 
@@ -275,13 +292,17 @@ def variogram_function_error(params, x, y, variogram_function, weight, semivaria
 
     diff = variogram_function(params, x) - y
 
+    # MEG added two new options (1 and 2) old weighting scheme is 3
     if weight == 1:
-        #weights = np.arange(x.size, 0.0, -1.0)
         weights = 1.0 / x
         weights /= np.sum(weights)
         rmse = np.sqrt(np.average(diff**2, weights=weights))
     elif weight == 2:
         weights = 1.0 / (semivariance_error**2)
+        weights /= np.sum(weights)
+        rmse = np.sqrt(np.average(diff**2, weights=weights))
+    elif weight == 3:
+        weights = np.arange(x.size, 0.0, -1.0)
         weights /= np.sum(weights)
         rmse = np.sqrt(np.average(diff**2, weights=weights))
     else:
@@ -346,7 +367,6 @@ def krige(x, y, z, coords, variogram_function, variogram_model_parameters):
 
         return zinterp, sigmasq
 
-
 def krige_3d(x, y, z, vals, coords, variogram_function, variogram_model_parameters):
         """Sets up and solves the kriging matrix for the given coordinate pair.
         This function is now only used for the statistics calculations."""
@@ -405,7 +425,6 @@ def find_statistics(x, y, z, variogram_function, variogram_model_parameters):
     epsilon = delta/sigma
 
     return delta, sigma, epsilon
-
 
 def find_statistics_3d(x, y, z, vals, variogram_function, variogram_model_parameters):
     """Calculates variogram fit statistics for 3D problems."""

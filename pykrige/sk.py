@@ -48,8 +48,8 @@ class SimpleKriging:
             specified variogram model. If not provided, parameters will be automatically
             calculated such that the root-mean-square error for the fit variogram
             function is minimized.
-                linear - [slope, nugget]
-                power - [scale, exponent, nugget]
+                linear - [slope, nugget] (only for variogram analysis)
+                power - [scale, exponent, nugget] (only for variogram analysis)
                 gaussian - [sill, range, nugget]
                 spherical - [sill, range, nugget]
                 exponential - [sill, range, nugget]
@@ -65,11 +65,11 @@ class SimpleKriging:
             variogram_parameters will be passed to the function as the first argument.
         nlags (int, optional): Number of averaging bins for the semivariogram.
             Default is 6.
-        weight (boolean, optional): Flag that specifies if semivariance at smaller lags
-            should be weighted more heavily when automatically calculating variogram model.
-            True indicates that weights will be applied. Default is False.
-            (Kitanidis suggests that the values at smaller lags are more important in
-            fitting a variogram model, so the option is provided to enable such weighting.)
+        weight (int, optional): If weight=1, semivariance at smaller lags
+            is weighted more heavily when automatically calculating variogram model.  The
+            weight is 1/lag.  If weight=2, then fit is weighted by the error in the estimate 
+            of the semivariogram.  If weight=3, the the old scheme of weighting by (n_bins-bin_number)
+            If weight=0, no weights will be applied.  Default is 0.
         anisotropy_scaling (float, optional): Scalar stretching value to take
             into account anisotropy. Default is 1 (effectively no stretching).
             Scaling is applied in the y-direction in the rotated data frame
@@ -103,10 +103,11 @@ class SimpleKriging:
                     more information.
                 nlags (int, optional): Number of averaging bins for the semivariogram.
                     Defualt is 6.
-                weight (integer, optional): If weight=1, semivariance at smaller lags
-                    is weighted more heavily when automatically calculating variogram model.
-                    If weight=0, no weights will be applied. If weights=2, then fit is weighted
-                    by the error in the estimate of the semivariogram.  Default is 0.
+                weight (int, optional): If weight=1, semivariance at smaller lags
+                    is weighted more heavily when automatically calculating variogram model.  The
+                    weight is 1/lag.  If weight=2, then fit is weighted by the error in the estimate 
+                    of the semivariogram.  If weight=3, the the old scheme of weighting by (n_bins-bin_number)
+                    If weight=0, no weights will be applied.  Default is 0.
                 anisotropy_scaling (float, optional): Scalar stretching value to
                     take into account anisotropy. Default is 1 (effectively no
                     stretching). Scaling is applied in the y-direction.
@@ -185,7 +186,7 @@ class SimpleKriging:
     def __init__(self, x, y, z, variogram_model='linear', variogram_parameters=None,
                  variogram_function=None, nlags=6, weight=0, anisotropy_scaling=1.0,
                  anisotropy_angle=0.0, verbose=False, enable_plotting=False,
-                 enable_statistics=False):
+                 enable_statistics=False, min_theta=None, max_theta=None):
 
         # Code assumes 1D input arrays. Ensures that any extraneous dimensions
         # don't get in the way. Copies are created to avoid any problems with
@@ -225,7 +226,7 @@ class SimpleKriging:
         self.lags, self.semivariance, self.semivariance_error, self.variogram_model_parameters = \
             core.initialize_variogram_model(self.X_ADJUSTED, self.Y_ADJUSTED, self.Z,
                                             self.variogram_model, variogram_parameters,
-                                            self.variogram_function, nlags, weight)
+                                            self.variogram_function, nlags, weight, min_theta, max_theta)
         if self.verbose:
             if self.variogram_model == 'linear':
                 print "Using '%s' Variogram Model" % 'linear'
@@ -336,11 +337,27 @@ class SimpleKriging:
         ax.errorbar(self.lags, self.semivariance, fmt='ro', yerr=self.semivariance_error, label='calculated')
         ax.plot(self.lags,
                 self.variogram_function(self.variogram_model_parameters, self.lags), 'k-', label='fit')
-        plt.title('Variogram(' + self.variogram_model + '): sill = ' + ('%.2f' % self.variogram_model_parameters[0]) + 
-                        ', nugget = ' + ('%.2f' % self.variogram_model_parameters[2]) + '\nazimuth = ' + 
-                        ('%.1f' % self.anisotropy_angle) + ', range-X = ' + 
-                        ('%.1f' % self.variogram_model_parameters[1]) + ', range-Y = ' +
-                        ('%.1f' % (self.variogram_model_parameters[1] / self.anisotropy_scaling)))
+        if self.variogram_model == 'linear':
+            plt.title('Variogram(' + self.variogram_model + '): slope = ' + ('%.2f' % self.variogram_model_parameters[0]) + 
+                            ', nugget = ' + ('%.2f' % self.variogram_model_parameters[1]) + '\nazimuth = ' + 
+                            ('%.1f' % -self.anisotropy_angle) + ', scaling = ' +
+                            ('%.1f' % self.anisotropy_scaling))
+        elif self.variogram_model == 'power':
+            plt.title('Variogram(' + self.variogram_model + '): scale = ' + ('%.3f' % self.variogram_model_parameters[0]) + 
+                            ', nugget = ' + ('%.2f' % self.variogram_model_parameters[2]) + '\nazimuth = ' + 
+                            ('%.1f' % -self.anisotropy_angle) + ', exponent = ' + 
+                            ('%.3f' % self.variogram_model_parameters[1]) + ', scaling = ' +
+                            ('%.1f' % self.anisotropy_scaling))
+        elif self.variogram_model == 'custom':
+            plt.title('Variogram(' + self.variogram_model + '):\n' + 
+                            '\nazimuth = ' + ('%.1f' % -self.anisotropy_angle) + ', scaling = ' + 
+                            ('%.1f' % self.anisotropy_scaling))
+        else:
+            plt.title('Variogram(' + self.variogram_model + '): sill = ' + ('%.2f' % self.variogram_model_parameters[0]) + 
+                            ', nugget = ' + ('%.2f' % self.variogram_model_parameters[2]) + '\nazimuth = ' + 
+                            ('%.1f' % -self.anisotropy_angle) + ', range-X = ' + 
+                            ('%.1f' % self.variogram_model_parameters[1]) + ', range-Y = ' +
+                            ('%.1f' % (self.variogram_model_parameters[1] / self.anisotropy_scaling)))
         plt.xlabel('lag (distance)')
         plt.ylabel('variance (distance^2)')
         plt.legend(loc='best')
@@ -552,6 +569,9 @@ class SimpleKriging:
         if self.verbose:
             print "Executing Simple Kriging...\n"
 
+        if self.variogram_model == 'linear' or self.variogram_model == 'power':
+            raise ValueError("for simple kriging variogram must have well behaved correlation")
+
         if style != 'grid' and style != 'masked' and style != 'points':
             raise ValueError("style argument must be 'grid', 'points', or 'masked'")
 
@@ -595,19 +615,19 @@ class SimpleKriging:
         xy_data = np.concatenate((self.X_ADJUSTED[:, np.newaxis], self.Y_ADJUSTED[:, np.newaxis]), axis=1)
 
         c_pars = None
-        if backend == 'C':
-            try:
-                from .lib.cok import _c_exec_loop, _c_exec_loop_moving_window
-            except ImportError:
-                print('Warning: failed to load Cython extensions.\n'\
-                      '   See https://github.com/bsmurphy/PyKrige/issues/8 \n'\
-                      '   Falling back to a pure python backend...')
-                backend = 'loop'
-            except:
-                raise RuntimeError("Unknown error in trying to load Cython extension.")
-
-            c_pars = {key: getattr(self, key) for key in ['Z', 'eps', 'variogram_model_parameters',
-                                                          'variogram_function']}
+#        if backend == 'C':
+#            try:
+#                from .lib.cok import _c_exec_loop, _c_exec_loop_moving_window
+#            except ImportError:
+#                print('Warning: failed to load Cython extensions.\n'\
+#                      '   See https://github.com/bsmurphy/PyKrige/issues/8 \n'\
+#                      '   Falling back to a pure python backend...')
+#                backend = 'loop'
+#            except:
+#                raise RuntimeError("Unknown error in trying to load Cython extension.")
+#
+#            c_pars = {key: getattr(self, key) for key in ['Z', 'eps', 'variogram_model_parameters',
+#                                                          'variogram_function']}
 
         if n_closest_points is not None:
             from scipy.spatial import cKDTree
@@ -616,9 +636,9 @@ class SimpleKriging:
 
             if backend == 'loop':
                 zvalues, sigmasq = self._exec_loop_moving_window(a, bd, mask, bd_idx)
-            elif backend == 'C':
-                zvalues, sigmasq = _c_exec_loop_moving_window(a, bd, mask.astype('int8'),
-                                                              bd_idx, self.X_ADJUSTED.shape[0], c_pars)
+            #elif backend == 'C':
+            #    zvalues, sigmasq = _c_exec_loop_moving_window(a, bd, mask.astype('int8'),
+            #                                                  bd_idx, self.X_ADJUSTED.shape[0], c_pars)
             else:
                 raise ValueError('Specified backend {} for a moving window is not supported.'.format(backend))
         else:
@@ -627,8 +647,8 @@ class SimpleKriging:
                 zvalues, sigmasq = self._exec_vector(a, bd, mask)
             elif backend == 'loop':
                 zvalues, sigmasq = self._exec_loop(a, bd, mask)
-            elif backend == 'C':
-                zvalues, sigmasq = _c_exec_loop(a, bd, mask.astype('int8'), self.X_ADJUSTED.shape[0],  c_pars)
+            #elif backend == 'C':
+            #    zvalues, sigmasq = _c_exec_loop(a, bd, mask.astype('int8'), self.X_ADJUSTED.shape[0],  c_pars)
             else:
                 raise ValueError('Specified backend {} is not supported for 2D ordinary kriging.'.format(backend))
 
