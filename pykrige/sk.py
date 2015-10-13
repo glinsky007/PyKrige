@@ -398,7 +398,6 @@ class SimpleKriging:
         d = cdist(xy, xy, 'euclidean')
         a = np.zeros((n, n))
         a[:,:] = self.variogram_model_parameters[0] - self.variogram_function(self.variogram_model_parameters, d)
-        print a
 
         return a
 
@@ -413,14 +412,8 @@ class SimpleKriging:
 
         a_inv = scipy.linalg.inv(a)
 
-        #if np.any(np.absolute(bd) <= self.eps):
-        #    zero_value = True
-        #    zero_index = np.where(np.absolute(bd) <= self.eps)
-
         b = np.zeros((npt, n, 1))
         b[:, :, 0] = self.variogram_model_parameters[0] - self.variogram_function(self.variogram_model_parameters, bd)
-        #if zero_value:
-        #    b[zero_index[0], zero_index[1], 0] = 0.0
 
         if (~mask).any():
             mask_b = np.repeat(mask[:, np.newaxis, np.newaxis], n, axis=1)
@@ -429,12 +422,6 @@ class SimpleKriging:
         x = np.dot(a_inv, b.reshape((npt, n)).T).reshape((1, n, npt)).T
         zvalues = np.sum(x[:, :, 0] * self.Z, axis=1)
         sigmasq = self.variogram_model_parameters[0] - np.sum(x[:, :, 0] * b[:, :, 0], axis=1)
-        
-        print b, x, self.Z
-        
-        #weights = a_inv.dot(b)
-        #zvalues = self.Z.dot(weights)
-        #sigmasq = self.variogram_model_parameters[0] - np.sum( b * weights )
 
         return zvalues, sigmasq
 
@@ -451,17 +438,9 @@ class SimpleKriging:
 
         for j in np.nonzero(~mask)[0]:   # Note that this is the same thing as range(npt) if mask is not defined,
             bd = bd_all[j]               # otherwise it takes the non-masked elements.
-            #if np.any(np.absolute(bd) <= self.eps):
-            #    zero_value = True
-            #    zero_index = np.where(np.absolute(bd) <= self.eps)
-            #else:
-            #    zero_index = None
-            #    zero_value = False
 
             b = np.zeros((n, 1))
             b[:, 0] = self.variogram_model_parameters[0] -  self.variogram_function(self.variogram_model_parameters, bd)
-            #if zero_value:
-            #    b[zero_index[0], 0] = 0.0
             x = np.dot(a_inv, b)
             zvalues[j] = np.sum(x[:, 0] * self.Z)
             sigmasq[j] = self.variogram_model_parameters[0] - np.sum(x[:, 0] * b[:, 0])
@@ -485,16 +464,8 @@ class SimpleKriging:
             a_selector = np.concatenate((b_selector, np.array([a_all.shape[0] - 1])))
             a = a_all[a_selector[:, None], a_selector]
 
-            #if np.any(np.absolute(bd) <= self.eps):
-            #    zero_value = True
-            #    zero_index = np.where(np.absolute(bd) <= self.eps)
-            #else:
-            #    zero_index = None
-            #    zero_value = False
             b = np.zeros((n, 1))
             b[:, 0] = self.variogram_model_parameters[0] -  self.variogram_function(self.variogram_model_parameters, bd)
-            #if zero_value:
-            #    b[zero_index[0], 0] = 0.0
 
             x = scipy.linalg.solve(a, b)
 
