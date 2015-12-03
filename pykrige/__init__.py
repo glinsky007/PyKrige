@@ -10,6 +10,8 @@ Dependencies:
     Cython
 
 Modules:
+    sk: Contains class SimpleKriging, which is a convenience class
+        for easy access to 2D simple kriging.
     ok: Contains class OrdinaryKriging, which is a convenience class
         for easy access to 2D ordinary kriging.
     uk: Contains class UniversalKriging, which provides more control over
